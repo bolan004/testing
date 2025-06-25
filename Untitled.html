@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warranty Reminder Generator</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+    form input, form button { margin: 0.5rem 0; padding: 0.5rem; width: 100%; box-sizing: border-box; }
+    li { margin: 0.5rem 0; }
+    button.delete { margin-left: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Warranty Reminder Generator</h1>
+  <form id="warranty-form">
+    <input type="text" name="productName" placeholder="Product name" required />
+    <input type="date" name="purchaseDate" required />
+    <input type="number" name="warrantyMonths" placeholder="Warranty (months)" required />
+    <input type="number" name="reminderOffsetDays" placeholder="Reminder lead days" required />
+    <button type="submit">Add Warranty</button>
+  </form>
+
+  <ul id="warranty-list"></ul>
+  <button id="download-ics">Download Calendar</button>
+
+  <!-- Load ICS.js library from jsDelivr CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/ics@2.33.0/dist/ics.umd.min.js"></script>
+  <script>
+    (function(){
+      // Create calendar factory from either global ics or ICS
+      const createCal = (typeof ics === 'function') ? ics : (typeof ICS === 'function' ? ICS : null);
+      if (!createCal) {
+        console.error('Failed to load ICS.js library');
+        alert('Error: Could not load calendar library. Please check your internet connection or try again later.');
+        return;
+      }
+
+      const STORAGE_KEY = 'warranties';
+      let warranties = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+      const form = document.getElementById('warranty-form');
+      const listEl = document.getElementById('warranty-list');
+      const downloadBtn = document.getElementById('download-ics');
+
+      function save() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(warranties));
+      }
+
+      function renderList() {
+        listEl.innerHTML = '';
+        if (warranties.length === 0) {
+          listEl.innerHTML = '<li>No warranties added.</li>';
+          return;
+        }
+        warranties.forEach((w, idx) => {
+          const exp = new Date(w.purchaseDate);
+          exp.setMonth(exp.getMonth() + w.warrantyMonths);
+          const li = document.createElement('li');
+          li.textContent = `${w.productName} – expires on ${exp.toISOString().slice(0,10)}`;
+
+          const del = document.createElement('button');
+          del.textContent = 'Delete';
+          del.className = 'delete';
+          del.onclick = () => {
+            warranties.splice(idx, 1);
+            save();
+            renderList();
+          };
+          li.appendChild(del);
+          listEl.appendChild(li);
+        });
+      }
+
+      form.onsubmit = e => {
+        e.preventDefault();
+        const f = e.target;
+        warranties.push({
+          productName: f.productName.value.trim(),
+          purchaseDate: f.purchaseDate.value,
+          warrantyMonths: +f.warrantyMonths.value,
+          reminderOffsetDays: +f.reminderOffsetDays.value
+        });
+        save();
+        renderList();
+        f.reset();
+      };
+
+      downloadBtn.onclick = () => {
+        if (warranties.length === 0) {
+          alert('Please add at least one warranty before downloading the calendar.');
+          return;
+        }
+        console.log('Generating calendar for warranties:', warranties);
+        const cal = createCal();
+        warranties.forEach(w => {
+          const purchase = new Date(w.purchaseDate);
+          const exp = new Date(purchase);
+          exp.setMonth(exp.getMonth() + w.warrantyMonths);
+          const rem = new Date(exp);
+          rem.setDate(rem.getDate() - w.reminderOffsetDays);
+
+          cal.addEvent(
+            `Warranty: ${w.productName}`,
+            `Your warranty on ${w.productName} expires on ${exp.toISOString().slice(0,10)}.`,
+            '',
+            rem,
+            exp
+          );
+        });
+        const success = cal.download('warranty-reminders');
+        if (!success) {
+          alert('Failed to download calendar file. Please try again.');
+        }
+      };
+
+      renderList();
+    })();
+  </script>
+</body>
+</html>
